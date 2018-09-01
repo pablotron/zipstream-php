@@ -122,6 +122,40 @@ final class FileWriter implements Writer {
 };
 
 namespace Pablotron\ZipStream;
+#
+# Convert a UNIX timestamp to a DOS time/date.
+#
+final class DateTime {
+  public $time,
+         $dos_time,
+         $dos_date;
+
+  static $DOS_EPOCH = [
+    'year'    => 1980,
+    'mon'     => 1,
+    'mday'    => 1,
+    'hours'   => 0,
+    'minutes' => 0,
+    'seconds' => 0,
+  ];
+
+  public function __construct($time) {
+    $this->time = $time;
+    # get date array for timestamp
+    $d = getdate($time);
+
+    # set lower-bound on dates
+    if ($d['year'] < 1980) {
+      $d = self::$DOS_EPOCH;
+    }
+
+    # remove extra years from 1980
+    $d['year'] -= 1980;
+
+    $this->dos_date = ($d['year'] << 9) | ($d['mon'] << 5) | ($d['mday']);
+    $this->dos_time = ($d['hours'] << 11) | ($d['minutes'] << 5) | ($d['seconds'] >> 1);
+  }
+};
 
 final class Entry {
   const STATE_INIT = 0;
@@ -140,6 +174,7 @@ final class Entry {
          $hash;
 
   private $len,
+          $date_time,
           $hash_context,
           $state;
 
@@ -162,6 +197,7 @@ final class Entry {
     $this->compressed_size = 0;
     $this->state = self::STATE_INIT;
     $this->len = 0;
+    $this->date_time = new DateTime($time);
 
     # init hash context
     $this->hash_context = hash_init('crc32b');
@@ -201,42 +237,18 @@ final class Entry {
     }
   }
 
-#
-#   public function close() {
-#     try {
-#       if ($this->state != STATE_DATA) {
-#         # write empty string to flush header and set state
-#         $this->write('');
-#       }
-#
-#       # write footer
-#       $footer_len = $this->write_footer();
-#
-#       # update state and length
-#       $this->state = STATE_CLOSED;
-#       $this->len = $this->compressed_size + $footer_len;
-#
-#       # return total entry length
-#       return $this->len;
-#     } catch (Exception $e) {
-#       $this->state = STATE_ERROR;
-#       throw $e;
-#     }
-#   }
-#
+  ########################
+  # local header methods #
+  ########################
 
-  ##################
-  # header methods #
-  ##################
-
-  public function write_header() {
+  public function write_local_header() {
     # check state
     if ($this->state != self::STATE_INIT) {
       throw new Errors\Error("invalid entry state");
     }
 
     # get entry header, update entry length
-    $data = $this->get_header();
+    $data = $this->get_local_header();
 
     # write entry header
     $this->output->write($data);
@@ -248,20 +260,37 @@ final class Entry {
     return strlen($data);
   }
 
-  private function get_header() {
-    return pack('VvvvvvVVVvv',
-      0x04034b50, # local file header signature
-      0 # TODO
-    ) . $this->name . pack(
-      # TODO (extras)
+  const ENTRY_VERSION_NEEDED = 62;
+  const ENTRY_BIT_FLAGS = 0b100000001000;
+
+  private function get_local_header() {
+    # build extra data
+    $extra_data = pack('vv',
+      0x01,                       # zip64 extended info header ID (2 bytes)
+      0                           # field size (2 bytes)
     );
+
+    # build and return local file header
+    return pack('VvvvvvVVVvv',
+      0x04034b50,                 # local file header signature (4 bytes)
+      self::ENTRY_VERSION_NEEDED, # version needed to extract (2 bytes)
+      self::ENTRY_BIT_FLAGS,      # general purpose bit flag (2 bytes)
+      $this->method,              # compression method (2 bytes)
+      $this->date_time->dos_time, # last mod file time (2 bytes)
+      $this->date_time->dos_date, # last mod file date (2 bytes)
+      0,                          # crc-32 (4 bytes, zero, in footer)
+      0,                          # compressed size (4 bytes, zero, in footer)
+      0,                          # uncompressed size (4 bytes, zero, in footer)
+      strlen($this->name),        # file name length (2 bytes)
+      strlen($extra_data)         # extra field length (2 bytes)
+    ) . $this->name . $extra_data;
   }
 
-  ##################
-  # footer methods #
-  ##################
+  ########################
+  # local footer methods #
+  ########################
 
-  public function write_footer() {
+  public function write_local_footer() {
     # check state
     if ($this->state != self::STATE_DATA) {
       $this->state = self::STATE_ERROR;
@@ -273,7 +302,7 @@ final class Entry {
     $this->hash_context = null;
 
     # get footer
-    $data = $this->get_footer();
+    $data = $this->get_local_footer();
 
     # write footer to output
     $this->output->write($data);
@@ -285,8 +314,80 @@ final class Entry {
     return strlen($data);
   }
 
-  private function get_footer() {
-    return ''; # TODO
+  private function get_local_footer() {
+    return pack('VVPP',
+      0x08074b50,                 # data descriptor signature (4 bytes)
+      $this->hash,                # crc-32 (4 bytes)
+      $this->compressed_size,     # compressed size (8 bytes, zip64)
+      $this->uncompressed_size    # uncompressed size (8 bytes, zip64)
+    );
+  }
+
+  ##########################
+  # central header methods #
+  ##########################
+
+  private function get_central_extra_data() {
+    $r = [];
+
+    if ($this->uncompressed_size >= 0xFFFFFFFF) {
+      # append 64-bit uncompressed size
+      $r[] = pack('P', $this->uncompressed_size);
+    }
+
+    if ($this->compressed_size >= 0xFFFFFFFF) {
+      # append 64-bit compressed size
+      $r[] = pack('P', $this->compressed_size);
+    }
+
+    if ($this->pos >= 0xFFFFFFFF) {
+      # append 64-bit file offset
+      $r[] = pack('P', $this->pos);
+    }
+
+    # build result
+    $r = join('', $r);
+
+    if (strlen($r) > 0) {
+      $r = pack('vv',
+        0x01,                     # zip64 ext. info extra tag (2 bytes)
+        strlen($r)                # size of this extra block (2 bytes)
+      ) . $r;
+    }
+
+    # return packed data
+    return $r;
+  }
+
+
+  private function get_central_header() {
+    $extra_data = $this->get_central_extra_data();
+
+    # get sizes and offset
+    $compressed_size = ($this->compressed_size >= 0xFFFFFFFF) ? 0xFFFFFFFF : $compressed_size;
+    $uncompressed_size = ($this->uncompressed_size >= 0xFFFFFFFF) ? 0xFFFFFFFF : $uncompressed_size;
+    $pos = ($this->pos >= 0xFFFFFFFF) ? 0xFFFFFFFF : $pos;
+
+    # pack and return central header
+    return pack('VvvvvvvVVVvvvvvVV',
+      0x02014b50,                 # central file header signature (4 bytes)
+      self::ENTRY_VERSION_NEEDED, # FIXME: version made by (2 bytes)
+      self::ENTRY_VERSION_NEEDED, # version needed to extract (2 bytes)
+      self::ENTRY_BIT_FLAGS,      # general purpose bit flag (2 bytes)
+      $this->method,              # compression method (2 bytes)
+      $this->date_time->dos_time, # last mod file time (2 bytes)
+      $this->date_time->dos_date, # last mod file date (2 bytes)
+      $this->hash,                # crc-32 (4 bytes)
+      $compressed_size,           # compressed size (4 bytes)
+      $uncompressed_size,         # uncompressed size (4 bytes)
+      strlen($this->name),        # file name length (2 bytes)
+      strlen($extra_data),        # extra field length (2 bytes)
+      strlen($this->comment),     # file comment length (2 bytes)
+      0,                          # disk number start (2 bytes)
+      0,                          # TODO: internal file attributes (2 bytes)
+      0,                          # TODO: external file attributes (4 bytes)
+      $pos                        # relative offset of local header (4 bytes)
+    ) . $this->name . $extra_data . $this->comment;
   }
 
   ###################
@@ -392,7 +493,7 @@ final class ZipStream {
   public function add_file(
     string $dst_path,
     string $data,
-    array &$args = []
+    array $args = []
   ) {
     $this->add($dst_path, function(Entry &$e) use (&$data) {
       # write data
@@ -457,7 +558,11 @@ final class ZipStream {
     }, $args);
   }
 
-  public function add(string $dst_path, callable $cb, array &$args = []) {
+  public function add(
+    string $dst_path,
+    callable $cb,
+    array $args = []
+  ) {
     # check state
     if ($this->state != self::STATE_INIT) {
       throw new Errors\Error("invalid output state");
@@ -473,8 +578,8 @@ final class ZipStream {
     $args = array_merge(self::$FILE_DEFAULTS, $args);
 
     try {
-      # get method
-      $method = $this->get_method($args);
+      # get compression method
+      $method = $this->get_entry_method($args);
 
       # create new entry
       $e = new Entry(
@@ -482,7 +587,7 @@ final class ZipStream {
         $this->pos,
         $dst_path,
         $method,
-        $this->get_time($args),
+        $this->get_entry_time($args),
         $args['comment']
       );
 
@@ -492,14 +597,14 @@ final class ZipStream {
       # set state
       $this->state = self::STATE_ENTRY;
 
-      # write entry header
-      $header_len = $e->write_header();
+      # write entry local header
+      $header_len = $e->write_local_header();
 
       # pass entry to callback
       $cb($e);
 
-      # write entry footer
-      $footer_len = $e->write_footer();
+      # write entry local footer
+      $footer_len = $e->write_local_footer();
 
       # update output position
       $this->pos += $header_len + $e->compressed_size + $footer_len;
@@ -548,7 +653,7 @@ final class ZipStream {
   # utility methods #
   ###################
 
-  private function get_time(array &$args) {
+  private function get_entry_time(array &$args) {
     if (isset($args['time'])) {
       return $args['time'];
     } else if (isset($this->args['time'])) {
@@ -558,7 +663,7 @@ final class ZipStream {
     }
   }
 
-  private function get_method(array &$args) {
+  private function get_entry_method(array &$args) {
     if (isset($args['method'])) {
       return $args['method'];
     } else if (isset($this->args['method'])) {
