@@ -425,7 +425,12 @@ final class Entry {
       throw new Errors\PathError($path, "path contains double slashes");
     }
 
-    # check for double dots
+    # check for backslashes
+    if (preg_match('/\\/', $path)) {
+      throw new Errors\PathError($path, "path contains backslashes");
+    }
+
+    # check for relative path
     if (preg_match('/\.\./', $path)) {
       throw new Errors\PathError($path, "relative path");
     }
