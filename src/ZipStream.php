@@ -30,28 +30,28 @@ final class PathError extends Error {
 };
 
 interface Writer {
-  public function set(string $key, string $val);
-  public function open();
-  public function write(string $data);
-  public function close();
+  public function set(string $key, string $val) : void;
+  public function open() : void ;
+  public function write(string $data) : void;
+  public function close() : void;
 };
 
 final class HTTPResponseWriter implements Writer {
   private $args = [];
 
-  public function set(string $key, string $val) {
+  public function set(string $key, string $val) : void {
     $this->args[$key] = $val;
   }
 
-  public function open() {
+  public function open() : void {
     # TODO: send http headers
   }
 
-  public function write(string $data) {
+  public function write(string $data) : void {
     echo $data;
   }
 
-  public function close() {
+  public function close() : void {
     # ignore
   }
 };
@@ -70,11 +70,11 @@ final class FileWriter implements Writer {
     $this->path = $path;
   }
 
-  public function set(string $key, string $val) {
+  public function set(string $key, string $val) : void {
     # ignore metadata
   }
 
-  public function open() {
+  public function open() : void {
     # open output file
     $this->fh = @fopen($this->path, 'wb');
     if (!$this->fh) {
@@ -85,7 +85,7 @@ final class FileWriter implements Writer {
     $this->state = self::FILE_WRITER_STATE_OPEN;
   }
 
-  public function write(string $data) {
+  public function write(string $data) : void {
     # check state
     if ($this->state != self::FILE_WRITER_STATE_OPEN) {
       throw new Error("invalid output state");
@@ -101,7 +101,7 @@ final class FileWriter implements Writer {
     }
   }
 
-  public function close() {
+  public function close() : void {
     # check state
     if ($this->state == self::FILE_WRITER_STATE_CLOSED) {
       return;
@@ -160,7 +160,7 @@ final class Hasher {
     $this->ctx = hash_init('crc32b');
   }
 
-  public function write($data) {
+  public function write($data) : void {
     if ($this->ctx !== null) {
       # update hash context
       hash_update($this->ctx, $data);
@@ -169,7 +169,7 @@ final class Hasher {
     }
   }
 
-  public function close() {
+  public function close() : int {
     if ($this->ctx !== null) {
       # finalize hash context
       $d = hash_final($this->ctx, true);
@@ -197,16 +197,16 @@ abstract class DataFilter {
     $this->output = $output;
   }
 
-  public function write(string $data) {
+  public function write(string $data) : int {
     $this->output->write($data);
     return strlen($data);
   }
 
-  public abstract function close();
+  public abstract function close() : int;
 }
 
 final class StoreFilter extends DataFilter {
-  public function close() {
+  public function close() : int {
     return 0;
   }
 };
@@ -223,7 +223,7 @@ final class DeflateFilter extends DataFilter {
     }
   }
 
-  public function write(string $data) {
+  public function write(string $data) : int {
     $compressed_data = deflate_add($this->ctx, $data, ZLIB_NO_FLUSH);
     if ($compressed_data === false) {
       throw new Error('deflate_add() failed');
@@ -232,7 +232,7 @@ final class DeflateFilter extends DataFilter {
     return parent::write($compressed_data);
   }
 
-  public function close() {
+  public function close() : int {
     $compressed_data = deflate_add($this->ctx, '', ZLIB_FINISH);
     if ($compressed_data === false) {
       throw new Error('deflate_add() failed');
@@ -303,7 +303,7 @@ final class Entry {
     $this->check_path($name);
   }
 
-  public function write(string &$data) {
+  public function write(string &$data) : int {
     try {
       # check entry state
       if ($this->state != self::ENTRY_STATE_DATA) {
@@ -331,7 +331,7 @@ final class Entry {
   # local header methods #
   ########################
 
-  public function write_local_header() {
+  public function write_local_header() : int {
     # check state
     if ($this->state != self::ENTRY_STATE_INIT) {
       throw new Error("invalid entry state");
@@ -353,7 +353,7 @@ final class Entry {
   const ENTRY_VERSION_NEEDED = 45;
   const ENTRY_BIT_FLAGS = 0b100000001000;
 
-  private function get_local_header() {
+  private function get_local_header() : string {
     # build extra data
     $extra_data = pack('vv',
       0x01,                       # zip64 extended info header ID (2 bytes)
@@ -380,7 +380,7 @@ final class Entry {
   # local footer methods #
   ########################
 
-  public function write_local_footer() {
+  public function write_local_footer() : int {
     # check state
     if ($this->state != self::ENTRY_STATE_DATA) {
       $this->state = self::ENTRY_STATE_ERROR;
@@ -407,7 +407,7 @@ final class Entry {
     return strlen($data);
   }
 
-  private function get_local_footer() {
+  private function get_local_footer() : string {
     return pack('VVPP',
       0x08074b50,                 # data descriptor signature (4 bytes)
       $this->hash,                # crc-32 (4 bytes)
@@ -420,13 +420,13 @@ final class Entry {
   # central header methods #
   ##########################
 
-  public function write_central_header() {
+  public function write_central_header() : int {
     $data = $this->get_central_header();
     $this->output->write($data);
     return strlen($data);
   }
 
-  private function get_central_extra_data() {
+  private function get_central_extra_data() : string {
     $r = [];
 
     if ($this->uncompressed_size >= 0xFFFFFFFF) {
@@ -458,7 +458,7 @@ final class Entry {
     return $r;
   }
 
-  private function get_central_header() {
+  private function get_central_header() : string {
     $extra_data = $this->get_central_extra_data();
 
     # get sizes and offset
@@ -492,7 +492,7 @@ final class Entry {
   # utility methods #
   ###################
 
-  private function check_path(string $path) {
+  private function check_path(string $path) : void {
     # make sure path is non-null
     if (!$path) {
       throw new PathError($path, "null path");
@@ -606,7 +606,7 @@ final class ZipStream {
     string $dst_path,
     string $src_path,
     array &$args = []
-  ) {
+  ) : void {
     # get file time
     if (!isset($args['time'])) {
       # get file mtime
@@ -636,7 +636,7 @@ final class ZipStream {
     string $dst_path,
     &$src,
     array &$args = []
-  ) {
+  ) : void {
     if (!is_resource($src)) {
       $this->state = self::STREAM_STATE_ERROR;
       throw new Error('source is not a resource');
@@ -668,7 +668,7 @@ final class ZipStream {
     string $dst_path,
     callable $cb,
     array $args = []
-  ) {
+  ) : void {
     # check state
     if ($this->state != self::STREAM_STATE_INIT) {
       throw new Error("invalid output state");
@@ -724,7 +724,7 @@ final class ZipStream {
     }
   }
 
-  public function close() {
+  public function close() : int {
     try {
       if ($this->state != self::STREAM_STATE_INIT) {
         throw new Error("invalid archive state");
@@ -772,7 +772,7 @@ final class ZipStream {
     string $name,
     callable $cb,
     array &$args = []
-  ) {
+  ) : int {
     # create archive
     $zip = new self($name, $args);
 
@@ -792,7 +792,7 @@ final class ZipStream {
   private function get_zip64_end_of_central_directory_record(
     int $cdr_pos,
     int $cdr_len
-  ) {
+  ) : string {
     $num_entries = count($this->entries);
 
     return pack('VPvvVVPPPP',
@@ -813,7 +813,7 @@ final class ZipStream {
 
   private function get_zip64_end_of_central_directory_locator(
     int $zip64_cdr_pos
-  ) {
+  ) : string {
     return pack('VVPV',
       0x07064b50,     # zip64 end of central dir locator signature (4 bytes)
       0,              # number of the disk with the start of the zip64 end of central directory (4 bytes)
@@ -825,7 +825,7 @@ final class ZipStream {
   private function get_end_of_central_directory_record(
     int $cdr_pos,
     int $cdr_len
-  ) {
+  ) : string {
     # clamp num_entries
     $num_entries = count($this->entries);
     if ($num_entries >= 0xFFFF) {
@@ -855,7 +855,7 @@ final class ZipStream {
   # utility methods #
   ###################
 
-  private function get_entry_time(array &$args) {
+  private function get_entry_time(array &$args) : int {
     if (isset($args['time'])) {
       return $args['time'];
     } else if (isset($this->args['time'])) {
@@ -865,7 +865,7 @@ final class ZipStream {
     }
   }
 
-  private function get_entry_method(array &$args) {
+  private function get_entry_method(array &$args) : int {
     if (isset($args['method'])) {
       return $args['method'];
     } else if (isset($this->args['method'])) {
