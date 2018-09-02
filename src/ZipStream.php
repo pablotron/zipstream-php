@@ -172,12 +172,11 @@ final class HTTPResponseWriter implements Writer {
 };
 
 /**
+ * Write generated zip archive to a local file.
+ *
  * @api
  *
- * Stream generated archive to a local file.
- *
- * Streams generated zip archive to a local file.  This is the
- * default writer used by ZipStream if none is provided.
+ * {@example ../examples/06-file_writer.php}
  *
  * @see Writer
  */
@@ -200,12 +199,10 @@ final class FileWriter implements Writer {
    * @api
    *
    * Create a new FileWriter.
-   *
-   * @param string $path Output file path.
    */
-  public function __construct(string $path) {
+  public function __construct() {
+    # set state
     $this->state = self::FILE_WRITER_STATE_INIT;
-    $this->path = $path;
   }
 
   /**
@@ -217,15 +214,36 @@ final class FileWriter implements Writer {
    * @return void
    */
   public function set(string $key, string $val) : void {
-    # ignore metadata
+    # check state
+    if ($this->state !== self::FILE_WRITER_STATE_INIT) {
+      # set state, raise error
+      $this->state = self::FILE_WRITER_STATE_ERROR;
+      throw new Error("invalid file writer state");
+    }
+
+    if ($key == 'name') {
+      # save name
+      $this->path = $val;
+    } else {
+      # ignore other metadata
+    }
   }
 
   /**
    * Flush metadata and begin streaming archive contents.
    *
    * @return void
+   *
+   * @throw FileError if output archive could not be opened.
    */
   public function open() : void {
+    # check state
+    if ($this->state !== self::FILE_WRITER_STATE_INIT) {
+      # set state, raise error
+      $this->state = self::FILE_WRITER_STATE_ERROR;
+      throw new Error("invalid file writer state");
+    }
+
     # open output file
     $this->fh = @fopen($this->path, 'wb');
     if (!$this->fh) {
@@ -246,6 +264,8 @@ final class FileWriter implements Writer {
   public function write(string $data) : void {
     # check state
     if ($this->state != self::FILE_WRITER_STATE_OPEN) {
+      # set state, raise error
+      $this->state = self::FILE_WRITER_STATE_ERROR;
       throw new Error("invalid output state");
     }
 
@@ -254,6 +274,7 @@ final class FileWriter implements Writer {
 
     # check for error
     if ($len === false) {
+      # set state, raise error
       $this->state = self::FILE_WRITER_STATE_ERROR;
       throw new FileError($this->path, 'fwrite() failed');
     }
@@ -269,6 +290,8 @@ final class FileWriter implements Writer {
     if ($this->state == self::FILE_WRITER_STATE_CLOSED) {
       return;
     } else if ($this->state != self::FILE_WRITER_STATE_OPEN) {
+      # set state, raise error
+      $this->state = self::FILE_WRITER_STATE_ERROR;
       throw new Error("invalid output state");
     }
 
@@ -1031,7 +1054,7 @@ final class ZipStream {
    *
    * {@example ../examples/01-simple.php}
    */
-  public function __construct(string $name, array &$args = []) {
+  public function __construct(string $name, array $args = []) {
     try {
       $this->state = self::STREAM_STATE_INIT;
       $this->name = $name;
