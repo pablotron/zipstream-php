@@ -177,8 +177,6 @@ final class HTTPResponseWriter implements Writer {
  * @api
  *
  * {@example ../examples/06-file_writer.php}
- *
- * @see Writer
  */
 final class FileWriter implements Writer {
   /** @var string Output file path. */
@@ -300,6 +298,101 @@ final class FileWriter implements Writer {
 
     # set state
     $this->state = self::FILE_WRITER_STATE_CLOSED;
+  }
+};
+
+/**
+ * Write generated zip archive to a stream.
+ *
+ * @api
+ *
+ * {@example ../examples/07-stream_writer.php}
+ */
+final class StreamWriter implements Writer {
+  /** @var resource Output stream. */
+  public $stream;
+
+  const STREAM_WRITER_STATE_INIT = 0;
+  const STREAM_WRITER_STATE_OPEN = 1;
+  const STREAM_WRITER_STATE_CLOSED = 2;
+  const STREAM_WRITER_STATE_ERROR = 3;
+
+  /**
+   * Create a new StreamWriter.
+   *
+   * @api
+   */
+  public function __construct($stream) {
+    # check stream
+    if (!is_resource($stream)) {
+      $this->state = self::STREAM_WRITER_STATE_ERROR;
+      throw new Error('stream is not a resource');
+    }
+
+    # set state, cache stream
+    $this->state = self::STREAM_WRITER_STATE_INIT;
+    $this->stream = $stream;
+  }
+
+  public function set(string $key, string $val) : void {
+    # ignore metadata
+  }
+
+  public function open() : void {
+    # set state
+    $this->state = self::STREAM_WRITER_STATE_OPEN;
+  }
+
+  /**
+   * Write archive contents.
+   *
+   * @param string $data Archive file data.
+   *
+   * @return void
+   */
+  public function write(string $data) : void {
+    # check state
+    if ($this->state != self::STREAM_WRITER_STATE_OPEN) {
+      # set state, raise error
+      $this->state = self::STREAM_WRITER_STATE_ERROR;
+      throw new Error("invalid output state");
+    }
+
+    # write data
+    $len = fwrite($this->stream, $data);
+
+    # check for error
+    if ($len === false) {
+      # set state, raise error
+      $this->state = self::STREAM_WRITER_STATE_ERROR;
+      throw new Error('fwrite() failed');
+    }
+  }
+
+  /**
+   * Finish writing archive data.
+   *
+   * @return void
+   */
+  public function close() : void {
+    # check state
+    if ($this->state == self::STREAM_WRITER_STATE_CLOSED) {
+      return;
+    } else if ($this->state != self::STREAM_WRITER_STATE_OPEN) {
+      # set state, raise error
+      $this->state = self::STREAM_WRITER_STATE_ERROR;
+      throw new Error("invalid output state");
+    }
+
+    # flush output
+    if (!@fflush($this->stream)) {
+      # set state, raise error
+      $this->state = self::STREAM_WRITER_STATE_ERROR;
+      throw new Error("fflush() failed");
+    }
+
+    # set state
+    $this->state = self::STREAM_WRITER_STATE_CLOSED;
   }
 };
 
