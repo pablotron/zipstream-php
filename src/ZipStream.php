@@ -1350,15 +1350,12 @@ final class ZipStream {
     $args = array_merge(self::$FILE_DEFAULTS, $args);
 
     try {
-      # get compression method
-      $method = $this->get_entry_method($args);
-
       # create new entry
       $e = new Entry(
         $this->output,
         $this->pos,
         $dst_path,
-        $method,
+        $this->get_entry_method($args),
         $this->get_entry_time($args),
         $args['comment']
       );
@@ -1455,7 +1452,7 @@ final class ZipStream {
   public static function send(
     string $name,
     callable $cb,
-    array &$args = []
+    array $args = []
   ) : int {
     # create archive
     $zip = new self($name, $args);
