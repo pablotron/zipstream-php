@@ -7,10 +7,8 @@ const VERSION = '0.3.0';
 
 final class Methods {
   const STORE = 0;
-  const DEFLATE = 2;
+  const DEFLATE = 8;
 };
-
-namespace Pablotron\ZipStream\Errors;
 
 class Error extends \Exception { };
 final class FileError extends Error {
@@ -30,8 +28,6 @@ final class PathError extends Error {
     parent::__construct($message);
   }
 };
-
-namespace Pablotron\ZipStream\Writers;
 
 interface Writer {
   public function set(string $key, string $val);
@@ -82,7 +78,7 @@ final class FileWriter implements Writer {
     # open output file
     $this->fh = @fopen($this->path, 'wb');
     if (!$this->fh) {
-      throw new Errors\FileError($path, "couldn't open file");
+      throw new FileError($path, "couldn't open file");
     }
 
     # set state
@@ -92,7 +88,7 @@ final class FileWriter implements Writer {
   public function write(string $data) {
     # check state
     if ($this->state != self::STATE_OPEN) {
-      throw new Errors\Error("invalid output state");
+      throw new Error("invalid output state");
     }
 
     # write data
@@ -101,7 +97,7 @@ final class FileWriter implements Writer {
     # check for error
     if ($len === false) {
       $this->state = self::STATE_ERROR;
-      throw new Errors\FileError($this->path, 'fwrite() failed');
+      throw new FileError($this->path, 'fwrite() failed');
     }
   }
 
@@ -110,7 +106,7 @@ final class FileWriter implements Writer {
     if ($this->state == self::STATE_CLOSED) {
       return;
     } else if ($this->state != self::STATE_OPEN) {
-      throw new Errors\Error("invalid output state");
+      throw new Error("invalid output state");
     }
 
     # close file handle
@@ -121,7 +117,6 @@ final class FileWriter implements Writer {
   }
 };
 
-namespace Pablotron\ZipStream;
 #
 # Convert a UNIX timestamp to a DOS time/date.
 #
@@ -157,6 +152,37 @@ final class DateTime {
   }
 };
 
+final class Hasher {
+  public $hash;
+  private $ctx;
+
+  public function __construct() {
+    $this->ctx = hash_init('crc32b');
+  }
+
+  public function write($data) {
+    # update hash context
+    hash_update($this->ctx, $data);
+  }
+
+  public function close() {
+    $d = hash_final($this->ctx, true);
+    $this->ctx = null;
+
+    # encode hash as uint32_t
+    # (FIXME: endian issue?)
+    $this->hash = (
+      (ord($d[0]) << 24) |
+      (ord($d[1]) << 16) |
+      (ord($d[2]) << 8) |
+      (ord($d[3]))
+    );
+
+    # return encoded result
+    return $this->hash;
+  }
+};
+
 final class Entry {
   const STATE_INIT = 0;
   const STATE_DATA = 1;
@@ -175,7 +201,7 @@ final class Entry {
 
   private $len,
           $date_time,
-          $hash_context,
+          $hasher,
           $state;
 
   public function __construct(
@@ -200,7 +226,7 @@ final class Entry {
     $this->date_time = new DateTime($time);
 
     # init hash context
-    $this->hash_context = hash_init('crc32b');
+    $this->hasher = new Hasher();
 
     # sanity check path
     $this->check_path($name);
@@ -210,14 +236,14 @@ final class Entry {
     try {
       # check entry state
       if ($this->state != self::STATE_DATA) {
-        throw new Errors\Error("invalid entry state");
+        throw new Error("invalid entry state");
       }
 
       # update output size
       $this->uncompressed_size += strlen($data);
 
       # update hash context
-      hash_update($this->hash_context, $data);
+      $this->hasher->write($data);
 
       if ($this->method === Methods::DEFLATE) {
         $compressed_data = gzdeflate($data);
@@ -226,7 +252,7 @@ final class Entry {
         $compressed_data = $data;
         $this->compressed_size += strlen($data);
       } else {
-        throw new Errors\Error('invalid entry method');
+        throw new Error('invalid entry method');
       }
 
       # write compressed data to output
@@ -244,7 +270,7 @@ final class Entry {
   public function write_local_header() {
     # check state
     if ($this->state != self::STATE_INIT) {
-      throw new Errors\Error("invalid entry state");
+      throw new Error("invalid entry state");
     }
 
     # get entry header, update entry length
@@ -260,7 +286,7 @@ final class Entry {
     return strlen($data);
   }
 
-  const ENTRY_VERSION_NEEDED = 62;
+  const ENTRY_VERSION_NEEDED = 45;
   const ENTRY_BIT_FLAGS = 0b100000001000;
 
   private function get_local_header() {
@@ -294,12 +320,12 @@ final class Entry {
     # check state
     if ($this->state != self::STATE_DATA) {
       $this->state = self::STATE_ERROR;
-      throw new Errors\Error("invalid entry state");
+      throw new Error("invalid entry state");
     }
 
     # finalize hash context
-    $this->hash = hash_final($this->hash_context, true);
-    $this->hash_context = null;
+    $this->hash = $this->hasher->close();
+    $this->hasher = null;
 
     # get footer
     $data = $this->get_local_footer();
@@ -326,6 +352,12 @@ final class Entry {
   ##########################
   # central header methods #
   ##########################
+
+  public function write_central_header() {
+    $data = $this->get_central_header();
+    $this->output->write($data);
+    return strlen($data);
+  }
 
   private function get_central_extra_data() {
     $r = [];
@@ -359,14 +391,13 @@ final class Entry {
     return $r;
   }
 
-
   private function get_central_header() {
     $extra_data = $this->get_central_extra_data();
 
     # get sizes and offset
-    $compressed_size = ($this->compressed_size >= 0xFFFFFFFF) ? 0xFFFFFFFF : $compressed_size;
-    $uncompressed_size = ($this->uncompressed_size >= 0xFFFFFFFF) ? 0xFFFFFFFF : $uncompressed_size;
-    $pos = ($this->pos >= 0xFFFFFFFF) ? 0xFFFFFFFF : $pos;
+    $compressed_size = ($this->compressed_size >= 0xFFFFFFFF) ? 0xFFFFFFFF : $this->compressed_size;
+    $uncompressed_size = ($this->uncompressed_size >= 0xFFFFFFFF) ? 0xFFFFFFFF : $this->uncompressed_size;
+    $pos = ($this->pos >= 0xFFFFFFFF) ? 0xFFFFFFFF : $this->pos;
 
     # pack and return central header
     return pack('VvvvvvvVVVvvvvvVV',
@@ -397,42 +428,42 @@ final class Entry {
   private function check_path(string $path) {
     # make sure path is non-null
     if (!$path) {
-      throw new Errors\PathError($path, "null path");
+      throw new PathError($path, "null path");
     }
 
     # check for empty path
     if (!strlen($path)) {
-      throw new Errors\PathError($path, "empty path");
+      throw new PathError($path, "empty path");
     }
 
     # check for long path
     if (strlen($path) > 65535) {
-      throw new Errors\PathError($path, "path too long");
+      throw new PathError($path, "path too long");
     }
 
     # check for leading slash
     if (!$path[0] == '/') {
-      throw new Errors\PathError($path, "path contains leading slash");
+      throw new PathError($path, "path contains leading slash");
     }
 
     # check for trailing slash
     if (preg_match('/\\$/', $path)) {
-      throw new Errors\PathError($path, "path contains trailing slash");
+      throw new PathError($path, "path contains trailing slash");
     }
 
     # check for double slashes
     if (preg_match('/\/\//', $path)) {
-      throw new Errors\PathError($path, "path contains double slashes");
+      throw new PathError($path, "path contains double slashes");
     }
 
     # check for backslashes
-    if (preg_match('/\\/', $path)) {
-      throw new Errors\PathError($path, "path contains backslashes");
+    if (preg_match('/\\\\/', $path)) {
+      throw new PathError($path, "path contains backslashes");
     }
 
     # check for relative path
     if (preg_match('/\.\./', $path)) {
-      throw new Errors\PathError($path, "relative path");
+      throw new PathError($path, "relative path");
     }
   }
 };
@@ -480,7 +511,7 @@ final class ZipStream {
         $this->output = $args['output'];
       } else {
         # no output set, create default response writer
-        $this->output = new Writers\HTTPResponseWriter();
+        $this->output = new HTTPResponseWriter();
       }
 
       # set output metadata
@@ -516,7 +547,7 @@ final class ZipStream {
       # get file mtime
       $time = @filemtime($src_path);
       if ($time === false) {
-        throw new Errors\FileError($src_path, "couldn't get file mtime");
+        throw new FileError($src_path, "couldn't get file mtime");
       }
 
       # save file mtime
@@ -529,7 +560,7 @@ final class ZipStream {
     # open input stream
     $fh = @fopen($src_path, 'rb');
     if (!$fh) {
-      throw new Errors\FileError($src_path, "couldn't open file");
+      throw new FileError($src_path, "couldn't open file");
     }
 
     # read input
@@ -549,7 +580,7 @@ final class ZipStream {
 
         # check for error
         if ($buf === false) {
-          throw new Errors\Error("file read error");
+          throw new Error("file read error");
         }
 
         # write chunk to entry
@@ -570,12 +601,12 @@ final class ZipStream {
   ) {
     # check state
     if ($this->state != self::STATE_INIT) {
-      throw new Errors\Error("invalid output state");
+      throw new Error("invalid output state");
     }
 
     # check for duplicate path
     if (isset($this->paths[$dst_path])) {
-      throw new Errors\Error("duplicate path: $dst_path");
+      throw new Error("duplicate path: $dst_path");
     }
     $this->paths[$dst_path] = true;
 
@@ -626,11 +657,35 @@ final class ZipStream {
   public function close() {
     try {
       if ($this->state != self::STATE_INIT) {
-        throw new Errors\Error("invalid archive state");
+        throw new Error("invalid archive state");
       }
 
-      # TODO: write cdr
-      # TODO: write archive footer
+      # cache cdr offset, write cdr, get cdr length
+      $cdr_pos = $this->pos;
+      $cdr_len = array_reduce($this->entries, function($r, $e) {
+        return $r + $e->write_central_header();
+      }, 0);
+
+      # update position
+      $this->pos += $cdr_len;
+
+      # cache zip64 end of cdr position
+      $zip64_cdr_pos = $this->pos;
+
+      # write zip64 end cdr record
+      $data = $this->get_zip64_end_of_central_directory_record($cdr_pos, $cdr_len);
+      $this->output->write($data);
+      $this->pos += strlen($data);
+
+      # write zip64 end cdr locator
+      $data = $this->get_zip64_end_of_central_directory_locator($zip64_cdr_pos);
+      $this->output->write($data);
+      $this->pos += strlen($data);
+
+      # write end cdr record
+      $data = $this->get_end_of_central_directory_record($cdr_pos, $cdr_len);
+      $this->output->write($data);
+      $this->pos += strlen($data);
 
       # close output
       $this->output->close();
@@ -652,6 +707,74 @@ final class ZipStream {
 
     # close archive and return total number of bytes written
     return $zip->close();
+  }
+
+  ####################################
+  # central directory record methods #
+  ####################################
+
+  const VERSION_NEEDED = 45;
+
+  private function get_zip64_end_of_central_directory_record(
+    int $cdr_pos,
+    int $cdr_len
+  ) {
+    $num_entries = count($this->entries);
+
+    return pack('VPvvVVPPPP',
+      0x06064b50, # zip64 end of central dir signature (4 bytes)
+      44,         # size of zip64 end of central directory record (8 bytes)
+      self::VERSION_NEEDED, # FIXME: version made by (2 bytes)
+      self::VERSION_NEEDED, # version needed to extract (2 bytes)
+      0,                    # number of this disk (4 bytes)
+      0,                    # number of the disk with the start of the central directory (4 bytes)
+      $num_entries,         # total number of entries in the central directory on this disk (8 bytes)
+      $num_entries,         # total number of entries in the central directory (8 bytes)
+      $cdr_len,             # size of the central directory  (8 bytes)
+      $cdr_pos              # offset of start of central directory with respect to the starting disk number (8 bytes)
+      # zip64 extensible data sector (variable size)
+      # (FIXME: is extensible data sector needed?)
+    );
+  }
+
+  private function get_zip64_end_of_central_directory_locator(
+    int $zip64_cdr_pos
+  ) {
+    return pack('VVPV',
+      0x07064b50,     # zip64 end of central dir locator signature (4 bytes)
+      0,              # number of the disk with the start of the zip64 end of central directory (4 bytes)
+      $zip64_cdr_pos, # relative offset of the zip64 end of central directory record (8 bytes)
+      1               # total number of disks (4 bytes)
+    );
+  }
+
+  private function get_end_of_central_directory_record(
+    int $cdr_pos,
+    int $cdr_len
+  ) {
+    # clamp num_entries
+    $num_entries = count($this->entries);
+    if ($num_entries >= 0xFFFF) {
+      $num_entries = 0xFFFF;
+    }
+
+    # clamp cdr_len and cdr_pos
+    $cdr_len = ($cdr_len >= 0xFFFFFFFF) ? 0xFFFFFFFF : $cdr_len;
+    $cdr_pos = ($cdr_pos >= 0xFFFFFFFF) ? 0xFFFFFFFF : $cdr_pos;
+
+    # get comment
+    $comment = $this->args['comment'];
+
+    return pack('VvvvvVVv',
+      0x06054b50,       # end of central dir signature (4 bytes)
+      0,                # number of this disk (2 bytes)
+      0,                # disk with the start of the central directory (2 bytes)
+      $num_entries,     # number of entries in the central directory on this disk (2 bytes)
+      $num_entries,     # number of entries in the central directory (2 bytes)
+      $cdr_len,         # size of the central directory (4 bytes)
+      $cdr_pos,         # offset of start of central directory with respect to the starting disk number (4 bytes)
+      strlen($comment)  # .ZIP file comment length (2 bytes)
+    ) . $comment;
   }
 
   ###################
