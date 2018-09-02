@@ -1,7 +1,7 @@
 <?php
 declare(strict_types = 1);
 /**
- * Streamed, dynamically generated zip archives.
+ * Dynamically generate streamed zip archives.
  *
  * @author Paul Duncan <pabs@pablotron.org>
  * @copyright 2007-2018 Paul Duncan <pabs@pablotron.org>
@@ -1090,7 +1090,7 @@ final class Entry {
 };
 
 /**
- * Dynamically generate streamed zip file.
+ * Dynamically generate streamed zip archives.
  *
  * @api
  *
@@ -1149,7 +1149,10 @@ final class ZipStream {
    */
   public function __construct(string $name, array $args = []) {
     try {
+      # set state
       $this->state = self::STREAM_STATE_INIT;
+
+      # set name and args
       $this->name = $name;
       $this->args = array_merge(self::$ARCHIVE_DEFAULTS, [
         'time' => time(),

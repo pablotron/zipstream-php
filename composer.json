@@ -20,10 +20,14 @@
   },
 
   "autoload": {
-    "Pablotron\\ZipStream\\": "src/"
+    "psr-4": {
+      "Pablotron\\ZipStream\\": "src/"
+    }
   },
 
   "autoload-dev": {
-    "Pablotron\\ZipStream\\Tests\\": "tests/"
+    "psr-4": {
+      "Pablotron\\ZipStream\\Tests\\": "tests/"
+    }
   }
 }
