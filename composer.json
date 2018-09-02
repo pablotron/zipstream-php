@@ -29,5 +29,11 @@
     "psr-4": {
       "Pablotron\\ZipStream\\Tests\\": "tests/"
     }
+  },
+
+  "scripts": {
+    "test": [
+      "phpunit --bootstrap vendor/autoload.php tests"
+    ]
   }
 }
