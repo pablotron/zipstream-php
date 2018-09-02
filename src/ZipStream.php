@@ -41,7 +41,17 @@ class Error extends \Exception { };
 /**
  * Deflate context error.
  */
-class DeflateError extends Error { };
+final class DeflateError extends Error { };
+
+final class UnknownMethodError extends Error {
+  /** @var int Unknown compression method. */
+  public $method;
+
+  public function __construct(int $method) {
+    $this->method = $method;
+    parent::__construct('unknown compression method');
+  }
+};
 
 /**
  * File related error.
@@ -769,7 +779,8 @@ final class Entry {
     } else if ($this->method == Methods::STORE) {
       $this->filter = new StoreFilter($this->output);
     } else {
-      throw new Error('invalid compression method');
+      $this->state = self::ENTRY_STATE_ERROR;
+      throw new UnknownMethodError($this->method);
     }
 
     # sanity check path
@@ -1565,11 +1576,18 @@ final class ZipStream {
    */
   private function get_entry_method(array &$args) : int {
     if (isset($args['method'])) {
-      return $args['method'];
+      $r = $args['method'];
     } else if (isset($this->args['method'])) {
-      return $this->args['method'];
+      $r = $this->args['method'];
     } else {
-      return Methods::DEFLATE;
+      # fall back to default method
+      $r = Methods::DEFLATE;
     }
+
+    if ($r != Methods::DEFLATE && $r != Methods::STORE) {
+      throw new UnknownMethodError($r);
+    }
+
+    return $r;
   }
 };
