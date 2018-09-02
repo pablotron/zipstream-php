@@ -34,6 +34,10 @@
   "scripts": {
     "test": [
       "phpunit --bootstrap vendor/autoload.php tests"
+    ],
+
+    "docs": [
+      "phpdoc -d src -t docs"
     ]
   }
 }
