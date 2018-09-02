@@ -57,16 +57,16 @@ final class HTTPResponseWriter implements Writer {
 };
 
 final class FileWriter implements Writer {
-  const STATE_INIT = 0;
-  const STATE_OPEN = 1;
-  const STATE_CLOSED = 2;
-  const STATE_ERROR = 3;
-
   public $path;
   private $fh;
 
+  const FILE_WRITER_STATE_INIT = 0;
+  const FILE_WRITER_STATE_OPEN = 1;
+  const FILE_WRITER_STATE_CLOSED = 2;
+  const FILE_WRITER_STATE_ERROR = 3;
+
   public function __construct($path) {
-    $this->state = self::STATE_INIT;
+    $this->state = self::FILE_WRITER_STATE_INIT;
     $this->path = $path;
   }
 
@@ -82,12 +82,12 @@ final class FileWriter implements Writer {
     }
 
     # set state
-    $this->state = self::STATE_OPEN;
+    $this->state = self::FILE_WRITER_STATE_OPEN;
   }
 
   public function write(string $data) {
     # check state
-    if ($this->state != self::STATE_OPEN) {
+    if ($this->state != self::FILE_WRITER_STATE_OPEN) {
       throw new Error("invalid output state");
     }
 
@@ -96,16 +96,16 @@ final class FileWriter implements Writer {
 
     # check for error
     if ($len === false) {
-      $this->state = self::STATE_ERROR;
+      $this->state = self::FILE_WRITER_STATE_ERROR;
       throw new FileError($this->path, 'fwrite() failed');
     }
   }
 
   public function close() {
     # check state
-    if ($this->state == self::STATE_CLOSED) {
+    if ($this->state == self::FILE_WRITER_STATE_CLOSED) {
       return;
-    } else if ($this->state != self::STATE_OPEN) {
+    } else if ($this->state != self::FILE_WRITER_STATE_OPEN) {
       throw new Error("invalid output state");
     }
 
@@ -113,7 +113,7 @@ final class FileWriter implements Writer {
     @fclose($this->fh);
 
     # set state
-    $this->state = self::STATE_CLOSED;
+    $this->state = self::FILE_WRITER_STATE_CLOSED;
   }
 };
 
@@ -161,22 +161,29 @@ final class Hasher {
   }
 
   public function write($data) {
-    # update hash context
-    hash_update($this->ctx, $data);
+    if ($this->ctx !== null) {
+      # update hash context
+      hash_update($this->ctx, $data);
+    } else {
+      throw new Error('hash context already finalized');
+    }
   }
 
   public function close() {
-    $d = hash_final($this->ctx, true);
-    $this->ctx = null;
+    if ($this->ctx !== null) {
+      # finalize hash context
+      $d = hash_final($this->ctx, true);
+      $this->ctx = null;
 
-    # encode hash as uint32_t
-    # (FIXME: endian issue?)
-    $this->hash = (
-      (ord($d[0]) << 24) |
-      (ord($d[1]) << 16) |
-      (ord($d[2]) << 8) |
-      (ord($d[3]))
-    );
+      # encode hash as uint32_t
+      # (FIXME: endian issue?)
+      $this->hash = (
+        (ord($d[0]) << 24) |
+        (ord($d[1]) << 16) |
+        (ord($d[2]) << 8) |
+        (ord($d[3]))
+      );
+    }
 
     # return encoded result
     return $this->hash;
@@ -184,10 +191,10 @@ final class Hasher {
 };
 
 final class Entry {
-  const STATE_INIT = 0;
-  const STATE_DATA = 1;
-  const STATE_CLOSED = 2;
-  const STATE_ERROR = 3;
+  const ENTRY_STATE_INIT = 0;
+  const ENTRY_STATE_DATA = 1;
+  const ENTRY_STATE_CLOSED = 2;
+  const ENTRY_STATE_ERROR = 3;
 
   public $output,
          $pos,
@@ -221,7 +228,7 @@ final class Entry {
 
     $this->uncompressed_size = 0;
     $this->compressed_size = 0;
-    $this->state = self::STATE_INIT;
+    $this->state = self::ENTRY_STATE_INIT;
     $this->len = 0;
     $this->date_time = new DateTime($time);
 
@@ -235,7 +242,7 @@ final class Entry {
   public function write(string &$data) {
     try {
       # check entry state
-      if ($this->state != self::STATE_DATA) {
+      if ($this->state != self::ENTRY_STATE_DATA) {
         throw new Error("invalid entry state");
       }
 
@@ -258,7 +265,7 @@ final class Entry {
       # write compressed data to output
       return $this->output->write($compressed_data);
     } catch (Exception $e) {
-      $this->state = self::STATE_ERROR;
+      $this->state = self::ENTRY_STATE_ERROR;
       throw $e;
     }
   }
@@ -269,7 +276,7 @@ final class Entry {
 
   public function write_local_header() {
     # check state
-    if ($this->state != self::STATE_INIT) {
+    if ($this->state != self::ENTRY_STATE_INIT) {
       throw new Error("invalid entry state");
     }
 
@@ -280,7 +287,7 @@ final class Entry {
     $this->output->write($data);
 
     # set state
-    $this->state = self::STATE_DATA;
+    $this->state = self::ENTRY_STATE_DATA;
 
     # return header length
     return strlen($data);
@@ -318,8 +325,8 @@ final class Entry {
 
   public function write_local_footer() {
     # check state
-    if ($this->state != self::STATE_DATA) {
-      $this->state = self::STATE_ERROR;
+    if ($this->state != self::ENTRY_STATE_DATA) {
+      $this->state = self::ENTRY_STATE_ERROR;
       throw new Error("invalid entry state");
     }
 
@@ -334,7 +341,7 @@ final class Entry {
     $this->output->write($data);
 
     # set state
-    $this->state = self::STATE_CLOSED;
+    $this->state = self::ENTRY_STATE_CLOSED;
 
     # return footer length
     return strlen($data);
@@ -469,12 +476,10 @@ final class Entry {
 };
 
 final class ZipStream {
-  const VERSION = '0.3.0';
-
-  const STATE_INIT = 0;
-  const STATE_ENTRY = 1;
-  const STATE_CLOSED = 2;
-  const STATE_ERROR = 3;
+  const STREAM_STATE_INIT = 0;
+  const STREAM_STATE_ENTRY = 1;
+  const STREAM_STATE_CLOSED = 2;
+  const STREAM_STATE_ERROR = 3;
 
   # stream chunk size
   const READ_BUF_SIZE = 8192;
@@ -499,7 +504,7 @@ final class ZipStream {
 
   public function __construct(string $name, array &$args = []) {
     try {
-      $this->state = self::STATE_INIT;
+      $this->state = self::STREAM_STATE_INIT;
       $this->name = $name;
       $this->args = array_merge(self::$ARCHIVE_DEFAULTS, [
         'time' => time(),
@@ -521,7 +526,7 @@ final class ZipStream {
       # open output
       $this->output->open();
     } catch (Exception $e) {
-      $this->state = self::STATE_ERROR;
+      $this->state = self::STREAM_STATE_ERROR;
       throw $e;
     }
   }
@@ -600,7 +605,7 @@ final class ZipStream {
     array $args = []
   ) {
     # check state
-    if ($this->state != self::STATE_INIT) {
+    if ($this->state != self::STREAM_STATE_INIT) {
       throw new Error("invalid output state");
     }
 
@@ -631,7 +636,7 @@ final class ZipStream {
       $this->entries[] = $e;
 
       # set state
-      $this->state = self::STATE_ENTRY;
+      $this->state = self::STREAM_STATE_ENTRY;
 
       # write entry local header
       $header_len = $e->write_local_header();
@@ -646,17 +651,17 @@ final class ZipStream {
       $this->pos += $header_len + $e->compressed_size + $footer_len;
 
       # set state
-      $this->state = self::STATE_INIT;
+      $this->state = self::STREAM_STATE_INIT;
     } catch (Exception $e) {
       # set error state, re-throw exception
-      $this->state = self::STATE_ERROR;
+      $this->state = self::STREAM_STATE_ERROR;
       throw $e;
     }
   }
 
   public function close() {
     try {
-      if ($this->state != self::STATE_INIT) {
+      if ($this->state != self::STREAM_STATE_INIT) {
         throw new Error("invalid archive state");
       }
 
@@ -693,7 +698,7 @@ final class ZipStream {
       # return total archive length
       return $this->pos;
     } catch (Exception $e) {
-      $this->state = self::STATE_ERROR;
+      $this->state = self::STREAM_STATE_ERROR;
       throw $e;
     }
   }
