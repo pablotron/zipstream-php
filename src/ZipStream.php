@@ -774,6 +774,12 @@ final class Entry {
     $this->time = $time;
     $this->comment = $comment;
 
+    # check comment length
+    if (strlen($comment) >= 0xFFFF) {
+      $this->state = self::ENTRY_STATE_ERROR;
+      throw new Error('comment too long');
+    }
+
     $this->uncompressed_size = 0;
     $this->compressed_size = 0;
     $this->len = 0;
@@ -1078,7 +1084,7 @@ final class Entry {
     }
 
     # check for long path
-    if (strlen($path) > 65535) {
+    if (strlen($path) >= 0xFFFF) {
       throw new PathError($path, "path too long");
     }
 
@@ -1539,7 +1545,7 @@ final class ZipStream {
 
     # get comment, check length
     $comment = $this->args['comment'];
-    if (strlen($comment) >= 65535) {
+    if (strlen($comment) >= 0xFFFF) {
       throw new Error('comment too long');
     }
 
