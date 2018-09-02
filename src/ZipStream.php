@@ -456,8 +456,17 @@ final class DateTime {
     # remove extra years from 1980
     $d['year'] -= 1980;
 
-    $this->dos_date = ($d['year'] << 9) | ($d['mon'] << 5) | ($d['mday']);
-    $this->dos_time = ($d['hours'] << 11) | ($d['minutes'] << 5) | ($d['seconds'] >> 1);
+    $this->dos_date = (
+      (($d['year'] & 0x7F) << 9) |
+      (($d['mon'] & 0xF) << 5) |
+      ($d['mday'] & 0x1F)
+    );
+
+    $this->dos_time = (
+      (($d['hours'] & 0x3F) << 11) |
+      (($d['minutes'] & 0x3F) << 5) |
+      (($d['seconds'] & 0x3F) >> 1)
+    );
   }
 };
 
