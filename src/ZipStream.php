@@ -1089,12 +1089,12 @@ final class Entry {
     }
 
     # check for leading slash
-    if (!$path[0] == '/') {
+    if ($path[0] == '/') {
       throw new PathError($path, "path contains leading slash");
     }
 
     # check for trailing slash
-    if (preg_match('/\\$/', $path)) {
+    if (preg_match('/\/$/', $path)) {
       throw new PathError($path, "path contains trailing slash");
     }
 
