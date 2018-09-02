@@ -190,6 +190,61 @@ final class Hasher {
   }
 };
 
+abstract class DataFilter {
+  private $output;
+
+  public function __construct(Writer &$output) {
+    $this->output = $output;
+  }
+
+  public function write(string $data) {
+    $this->output->write($data);
+    return strlen($data);
+  }
+
+  public abstract function close();
+}
+
+final class StoreFilter extends DataFilter {
+  public function close() {
+    return 0;
+  }
+};
+
+final class DeflateFilter extends DataFilter {
+  private $ctx;
+
+  public function __construct(Writer &$output) {
+    parent::__construct($output);
+
+    $this->ctx = deflate_init(ZLIB_ENCODING_RAW);
+    if ($this->ctx === false) {
+      throw new Error('deflate_init() failed');
+    }
+  }
+
+  public function write(string $data) {
+    $compressed_data = deflate_add($this->ctx, $data, ZLIB_NO_FLUSH);
+    if ($compressed_data === false) {
+      throw new Error('deflate_add() failed');
+    }
+
+    return parent::write($compressed_data);
+  }
+
+  public function close() {
+    $compressed_data = deflate_add($this->ctx, '', ZLIB_FINISH);
+    if ($compressed_data === false) {
+      throw new Error('deflate_add() failed');
+    }
+
+    # clear deflate context
+    $this->ctx = null;
+
+    return parent::write($compressed_data);
+  }
+};
+
 final class Entry {
   const ENTRY_STATE_INIT = 0;
   const ENTRY_STATE_DATA = 1;
@@ -212,7 +267,7 @@ final class Entry {
           $state;
 
   public function __construct(
-    object &$output, # FIXME: constrain to stream interface
+    Writer &$output,
     int $pos,
     string $name,
     int $method,
@@ -235,6 +290,15 @@ final class Entry {
     # init hash context
     $this->hasher = new Hasher();
 
+    # init data filter
+    if ($this->method == Methods::DEFLATE) {
+      $this->filter = new DeflateFilter($this->output);
+    } else if ($this->method == Methods::STORE) {
+      $this->filter = new StoreFilter($this->output);
+    } else {
+      throw new Error('invalid compression method');
+    }
+
     # sanity check path
     $this->check_path($name);
   }
@@ -252,18 +316,11 @@ final class Entry {
       # update hash context
       $this->hasher->write($data);
 
-      if ($this->method === Methods::DEFLATE) {
-        $compressed_data = gzdeflate($data);
-        $this->compressed_size += strlen($compressed_data);
-      } else if ($this->method === Methods::STORE) {
-        $compressed_data = $data;
-        $this->compressed_size += strlen($data);
-      } else {
-        throw new Error('invalid entry method');
-      }
+      $len = $this->filter->write($data);
+      $this->compressed_size += $len;
 
-      # write compressed data to output
-      return $this->output->write($compressed_data);
+      # return length
+      return $len;
     } catch (Exception $e) {
       $this->state = self::ENTRY_STATE_ERROR;
       throw $e;
@@ -333,6 +390,9 @@ final class Entry {
     # finalize hash context
     $this->hash = $this->hasher->close();
     $this->hasher = null;
+
+    # flush remaining data
+    $this->compressed_size += $this->filter->close();
 
     # get footer
     $data = $this->get_local_footer();
@@ -574,14 +634,19 @@ final class ZipStream {
 
   public function add_stream(
     string $dst_path,
-    object &$src, # FIXME: limit to input stream
+    &$src,
     array &$args = []
   ) {
+    if (!is_resource($src)) {
+      $this->state = self::STREAM_STATE_ERROR;
+      throw new Error('source is not a resource');
+    }
+
     $this->add($dst_path, function(Entry &$e) use (&$src, &$args) {
       # read input
       while (!feof($src)) {
         # read chunk
-        $buf = @fread($src, READ_BUF_SIZE);
+        $buf = @fread($src, self::READ_BUF_SIZE);
 
         # check for error
         if ($buf === false) {
@@ -703,7 +768,11 @@ final class ZipStream {
     }
   }
 
-  public static function send(string $name, callable $cb, array &$args = []) {
+  public static function send(
+    string $name,
+    callable $cb,
+    array &$args = []
+  ) {
     # create archive
     $zip = new self($name, $args);
 
@@ -802,7 +871,7 @@ final class ZipStream {
     } else if (isset($this->args['method'])) {
       return $this->args['method'];
     } else {
-      return METHOD_DEFLATE;
+      return Methods::DEFLATE;
     }
   }
 };
