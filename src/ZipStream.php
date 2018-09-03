@@ -201,11 +201,13 @@ final class HTTPResponseWriter implements Writer {
   /**
    * Flush metadata and begin streaming archive contents.
    *
-   * @todo
    * @return void
    */
   public function open() : void {
-    # TODO: send http headers
+    # write response headers
+    foreach ($this->get_headers as $key => $val) {
+      header("$key: $val");
+    }
   }
 
   /**
@@ -226,6 +228,35 @@ final class HTTPResponseWriter implements Writer {
    */
   public function close() : void {
     # ignore
+  }
+
+  /**
+   * Get HTTP headers.
+   *
+   * @internal
+   *
+   * @return array Hash of HTTP headers.
+   */
+  private function get_headers() : array {
+    # build pre-RFC6266 file name
+    $old_name = preg_replace('/[^a-z0-9_.-]+/', '_', $this->args['name']);
+
+    # build URI-encoded (RFC6266) file name
+    $new_name = urlencode($this->args['name']);
+
+    # build and return response headers
+    return [
+      'Content-Type' => $this->args['type'],
+      'Content-Disposition' => join('; ', [
+        'attachment',
+        "filename=\"{$old_name}\"",
+        "filename*=UTF-8''{$new_name}"
+      ]),
+
+      'Pragma' => 'public',
+      'Cache-Control' => 'public, must-revalidate',
+      'Content-Transfer-Encoding' => 'binary',
+    ];
   }
 };
 
