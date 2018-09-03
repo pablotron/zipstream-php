@@ -1,6 +1,7 @@
 {
   "name": "pablotron/zipstream",
   "description": "Dynamically generate streamed zip archives.",
+  "homepage": "https://github.com/pablotron/zipstream-php",
   "license": "MIT",
 
   "authors": [{
