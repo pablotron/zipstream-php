@@ -1,0 +1,125 @@
+ZipStream-PHP 0.3.0
+===================
+
+Overview
+--------
+ZipStream-PHP is a library that allows you to dynamically generate
+streamed zip archives.
+
+Here's an example:
+
+    # import zipstream class
+    use Pablotron\ZipStream\ZipStream;
+    
+    # create the output stream
+    $zip = new ZipStream('example.zip');
+    
+    # add a file named "hello.txt" to output archive, containing the
+    # string "hello world!"
+    $zip->add_file('hello.txt', 'hello world!');
+    
+    # add a local file named "some-image.png" to the output archive as
+    # "picture.png"
+    $zip->add_file_from_path('picture.png', 'some-image.png');
+    
+    # finalize the output stream
+    $zip->close();
+
+Features:
+
+* Generate streamed archives without saving them to disk.
+* Files can be read from files, strings, streaming resources,
+  or generated dynamically.
+* Zip64 support: files and archives up to <code>2<sup>64</sup></code>
+  bytes in size
+* Stream output as an HTTP response, to a file on disk, to a resource
+  stream, or to a custom target.
+* [MIT][mit]-licensed: Use freely, even in commercial projects --
+  without restrictions.
+* Self-contained: Single source file with no required external
+  dependencies, so you can easily embed `ZipStream.php` directly into
+  your source tree if necessary.
+
+Dependencies
+------------
+
+* PHP: 7.0 or newer (required).
+* [Composer][composer]: Used for installation (optional, see below).
+* [phpDocumentor][phpdoc]: Used to generate the API documentation (optional).
+* [PHPUnit][phpunit]: Used to run the test suite (optional).
+
+*Note:* Consider an older version of ZipStream if you need PHP 5.x
+support.
+
+Installation
+------------
+### Using [Composer][composer]
+
+    # in your project root
+    composer require pablotron/zipstream
+
+Or add it to your top-level `composer.json`, like so:
+
+    "require": {
+      "pablotron/zipstream": "~0.3"
+    },
+
+### Manual Installation
+The source file for ZipStream is entirely self-contained, which means
+you can embed it directly in your project without using
+[Composer][composer] by doing the following:
+
+    # copy file to your project
+    cp src/ZipStream.php path/to/your/project/
+    
+    # then, somewhere in your project...
+    require_once 'path/to/ZipStream.php';
+
+Documentation
+-------------
+The API documentation is available online at the following URL:
+
+https://pablotron.github.io/zipstream-php/
+
+You can generate the API documentation using [Composer][composer], like
+so:
+
+    # generate api documentation in "docs/" directory
+    composer docs
+
+Brief usage examples are available in the `examples/` directory.
+
+Tests
+-----
+You can run the test suite via [Composer][composer] like so:
+
+    # run the test suite
+    composer test
+
+License
+-------
+Copyright 2007-2018 Paul Duncan <pabs@pablotron.org>
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+[composer]: https://getcomposer.org/
+[mit]: https://opensource.org/licenses/MIT
+[phpunit]: https://phpunit.de/
+[phpdoc]: https://phpdoc.org/

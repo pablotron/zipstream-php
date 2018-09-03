@@ -14,6 +14,8 @@ namespace Pablotron\ZipStream;
 
 /**
  * Current version of ZipStream.
+ *
+ * @api
  */
 const VERSION = '0.3.0';
 

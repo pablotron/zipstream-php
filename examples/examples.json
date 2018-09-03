@@ -1,0 +1,43 @@
+{
+  "examples": [{
+    "file": "01-simple.php",
+    "text": "Basic usage example."
+  }, {
+    "file": "02-add_file_from_path.php",
+    "text": "Add a file from a path."
+  }, {
+    "file": "03-add_stream.php",
+    "text": "Add file from a resource stream."
+  }, {
+    "file": "04-add.php",
+    "text": "Add a dynamically-generated file."
+  }, {
+    "file": "05-send.php",
+    "text": "Use `ZipStream::send`."
+  }, {
+    "file": "06-file_writer.php",
+    "text": "Write output to a file."
+  }, {
+    "file": "07-stream_writer.php",
+    "text": "Write output to a resource stream."
+  }, {
+    "file": "08-datetime.php",
+    "text": "Use a `DateTime` instance directly."
+  }, {
+    "file": "09-version.php",
+    "text": "Get the version of ZipStream."
+  }, {
+    "file": "10-archive_comment.php",
+    "text": "Add an archive comment."
+  }, {
+    "file": "11-add_file_comment.php",
+    "text": "Add a file comment."
+  }, {
+    "file": "12-add_file_methods.php",
+    "text": "Add a file with a specific compression method."
+  }, {
+    "file": "13-add_file_times.php",
+    "text": "Add a file with a specific modification time."
+  }]
+}
+

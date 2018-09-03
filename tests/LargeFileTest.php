@@ -8,11 +8,12 @@ use \Pablotron\ZipStream\ZipStream;
 
 final class LargeFileTest extends BaseTestCase {
   public function testCreateLargeFile() : void {
-    # build 4M string
+    # size and number of chunks
     $chunk_size = (1 << 22);
     $num_chunks = 1025;
 
-    # calculate expected size
+    # calculate expected file size (4299161600, enough to overflow a
+    # 32-bit integer and trigger zip64 mode)
     $expected_size = $chunk_size * $num_chunks;
 
     $this->with_temp_zip(function(ZipStream &$zip) use ($chunk_size, $num_chunks) {
