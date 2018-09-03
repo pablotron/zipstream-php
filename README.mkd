@@ -3,8 +3,8 @@ ZipStream-PHP
 
 Overview
 --------
-ZipStream-PHP is a library that allows you to dynamically generate
-streamed zip archives.
+ZipStream is a library that allows you to dynamically generate streamed
+zip archives.
 
 Here's an example:
 
@@ -98,7 +98,7 @@ You can run the test suite via [Composer][composer] like so:
 
 License
 -------
-Copyright 2007-2018 Paul Duncan <pabs@pablotron.org>
+Copyright 2007-2018 Paul Duncan ([pabs@pablotron.org][me])
 
 Permission is hereby granted, free of charge, to any person obtaining a
 copy of this software and associated documentation files (the
@@ -123,3 +123,4 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 [mit]: https://opensource.org/licenses/MIT
 [phpunit]: https://phpunit.de/
 [phpdoc]: https://phpdoc.org/
+[me]: mailto:pabs@pablotron.org
