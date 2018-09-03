@@ -19,7 +19,10 @@ const VERSION = '0.3.0';
 
 /**
  * Version needed to extract.
+ *
  * @internal
+ *
+ * @example "examples/09-version.php"
  */
 const VERSION_NEEDED = 45;
 
