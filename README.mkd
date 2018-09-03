@@ -1,5 +1,5 @@
-ZipStream-PHP 0.3.0
-===================
+ZipStream-PHP
+=============
 
 Overview
 --------
@@ -56,9 +56,9 @@ Installation
 ### Using [Composer][composer]
 
     # in your project root
-    composer require pablotron/zipstream
+    composer require pablotron/zipstream:~0.3
 
-Or add it to your top-level `composer.json`, like so:
+Or add it to the `composer.json` for your project, like so:
 
     "require": {
       "pablotron/zipstream": "~0.3"
