@@ -1,5 +1,4 @@
 <?php
-declare(strict_types = 1);
 /**
  * Dynamically generate streamed zip archives.
  *
@@ -8,6 +7,8 @@ declare(strict_types = 1);
  * @license MIT
  * @package Pablotron\ZipStream
  */
+
+declare(strict_types = 1);
 
 namespace Pablotron\ZipStream;
 
@@ -43,10 +44,18 @@ class Error extends \Exception { };
  */
 final class DeflateError extends Error { };
 
+/**
+ * Unknown compression method error.
+ */
 final class UnknownMethodError extends Error {
   /** @var int Unknown compression method. */
   public $method;
 
+  /**
+   * Create a new UnknownMethod error.
+   *
+   * @param int $method Unknown compression method.
+   */
   public function __construct(int $method) {
     $this->method = $method;
     parent::__construct('unknown compression method');
@@ -60,6 +69,12 @@ final class FileError extends Error {
   /** @var string Name of fail in which error occurred. */
   public $file_name;
 
+  /**
+   * Create a new UnknownMethod error.
+   *
+   * @param string $file_name File name.
+   * @param string $message Error message.
+   */
   public function __construct(string $file_name, string $message) {
     $this->file_name = $file_name;
     parent::__construct($message);
@@ -73,6 +88,12 @@ final class PathError extends Error {
   /** @var string string Invalid file name. */
   public $file_name;
 
+  /**
+   * Create a new UnknownMethod error.
+   *
+   * @param string $file_name File name.
+   * @param string $message Error message.
+   */
   public function __construct(string $file_name, string $message) {
     $this->file_name = $file_name;
     parent::__construct($message);
@@ -186,7 +207,7 @@ final class HTTPResponseWriter implements Writer {
  *
  * @api
  *
- * {@example ../examples/06-file_writer.php}
+ * @example "examples/06-file_writer.php"
  */
 final class FileWriter implements Writer {
   /** @var string Output file path. */
@@ -204,9 +225,10 @@ final class FileWriter implements Writer {
   const FILE_WRITER_STATE_ERROR = 3;
 
   /**
+   * Create a new FileWriter.
+   *
    * @api
    *
-   * Create a new FileWriter.
    */
   public function __construct() {
     # set state
@@ -316,7 +338,7 @@ final class FileWriter implements Writer {
  *
  * @api
  *
- * {@example ../examples/07-stream_writer.php}
+ * @example "examples/07-stream_writer.php"
  */
 final class StreamWriter implements Writer {
   /** @var resource Output stream. */
@@ -331,6 +353,10 @@ final class StreamWriter implements Writer {
    * Create a new StreamWriter.
    *
    * @api
+   *
+   * @param resource $stream Output stream.
+   *
+   * @example "examples/07-stream_writer.php"
    */
   public function __construct($stream) {
     # check stream
@@ -344,10 +370,29 @@ final class StreamWriter implements Writer {
     $this->stream = $stream;
   }
 
+  /**
+   * Set metadata for generated archive.
+   *
+   * *Note:* This method is not used for StreamWriter.
+   *
+   * @param string $key Metadata key (one of "name" or "type").
+   * @param string $val Metadata value.
+   *
+   * @return void
+   */
   public function set(string $key, string $val) : void {
     # ignore metadata
   }
 
+  /**
+   * Flush metadata and begin streaming archive contents.
+   *
+   * *Note:* This method is not used for StreamWriter.
+   *
+   * @return void
+   *
+   * @throw FileError if output archive could not be opened.
+   */
   public function open() : void {
     # set state
     $this->state = self::STREAM_WRITER_STATE_OPEN;
@@ -408,7 +453,10 @@ final class StreamWriter implements Writer {
 
 /**
  * Convert a UNIX timestamp into DOS date and time components.
+ *
  * @internal
+ *
+ * @example "examples/08-datetime.php"
  */
 final class DateTime {
   /**
@@ -420,6 +468,10 @@ final class DateTime {
          $dos_time,
          $dos_date;
 
+  /**
+   * Minimal date/time representable by a DOS timestamp.
+   * @internal
+   */
   static $DOS_EPOCH = [
     'year'    => 1980,
     'mon'     => 1,
@@ -434,13 +486,7 @@ final class DateTime {
    *
    * @param int $time Input UNIX timestamp.
    *
-   * @example
-   *   # create DateTime with current timestamp
-   *   $dt = new DateTime(time());
-   *
-   *   # print DOS date and time
-   *   echo "DOS time: {$dt->dos_time}\n";
-   *   echo "DOS date: {$dt->dos_date}\n";
+   * @example "examples/08-datetime.php"
    */
   public function __construct(int $time) {
     $this->time = $time;
@@ -1120,15 +1166,19 @@ final class Entry {
  *
  * @api
  *
- * {@example ../examples/01-simple.php}
+ * @example "examples/01-simple.php"
  */
 final class ZipStream {
+  /** @internal Initial stream state. */
   const STREAM_STATE_INIT = 0;
+  /** @internal Writing an entry. */
   const STREAM_STATE_ENTRY = 1;
+  /** @internal Stream is closed. */
   const STREAM_STATE_CLOSED = 2;
+  /** @internal Encountered an error white streaming. */
   const STREAM_STATE_ERROR = 3;
 
-  # stream chunk size
+  /** @internal Size, in bytes, of chunks to read from files. */
   const READ_BUF_SIZE = 8192;
 
   /** @var string Output archive name. */
@@ -1171,7 +1221,7 @@ final class ZipStream {
    * @param string $name Output archive name.
    * @param array $args Hash of output options (optional).
    *
-   * {@example ../examples/01-simple.php}
+   * @example "examples/01-simple.php"
    */
   public function __construct(string $name, array $args = []) {
     try {
@@ -1214,7 +1264,7 @@ final class ZipStream {
    *
    * @return void
    *
-   * {@example ../examples/01-simple.php}
+   * @example "examples/01-simple.php"
    */
   public function add_file(
     string $dst_path,
@@ -1236,7 +1286,7 @@ final class ZipStream {
    *
    * @return void
    *
-   * {@example ../examples/02-add_file_from_path.php}
+   * @example "examples/02-add_file_from_path.php"
    *
    * @throw FileError if the file could not be opened or read.
    */
@@ -1279,7 +1329,7 @@ final class ZipStream {
    *
    * @return void
    *
-   * {@example ../examples/03-add_stream.php}
+   * @example "examples/03-add_stream.php"
    *
    * @throw Error if $src is not a resource.
    * @throw Error if the resource could not be read.
@@ -1325,7 +1375,7 @@ final class ZipStream {
    *
    * @return void
    *
-   * {@example ../examples/04-add.php}
+   * @example "examples/04-add.php"
    *
    * @throw Error if the archive is in an invalid state.
    * @throw Error if the destination path already exists.
@@ -1394,7 +1444,7 @@ final class ZipStream {
    *
    * @throw Error if the archive is in an invalid state.
    *
-   * {@example ../examples/01-simple.php}
+   * @example "examples/01-simple.php"
    */
   public function close() : int {
     try {
@@ -1447,7 +1497,7 @@ final class ZipStream {
    * @param callable $cb Context callback.
    * @param array $args Hash of archive options (optional).
    *
-   * {@example ../examples/05-send.php}
+   * @example "examples/05-send.php"
    */
   public static function send(
     string $name,
