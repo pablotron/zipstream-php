@@ -10,12 +10,20 @@ use Pablotron\ZipStream\StreamWriter;
 
 final class ArchiveTest extends BaseTestCase {
   public function testCreate() : void {
-    $zip = new ZipStream('test.zip');
+    $zip_path = tempnam('/tmp', 'zipstream-test');
+
+    $zip = new ZipStream($zip_path, [
+      'output' => new FileWriter(),
+    ]);
 
     $this->assertInstanceOf(
       ZipStream::class,
       $zip
     );
+
+    # close archive and remove temp file
+    $zip->close();
+    unlink($zip_path);
   }
 
   public function testFileWriter() {
