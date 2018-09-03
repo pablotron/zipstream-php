@@ -205,7 +205,7 @@ final class HTTPResponseWriter implements Writer {
    */
   public function open() : void {
     # write response headers
-    foreach ($this->get_headers as $key => $val) {
+    foreach ($this->get_headers() as $key => $val) {
       header("$key: $val");
     }
   }
