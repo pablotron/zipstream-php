@@ -19,15 +19,15 @@ final class ArchiveTest extends BaseTestCase {
   }
 
   public function testFileWriter() {
-    $this->with_temp_file(function(string $dst_path) {
-      ZipStream::send($dst_path, function(ZipStream &$zip) {
+    $this->with_temp_file(function(string $zip_path) {
+      ZipStream::send($zip_path, function(ZipStream &$zip) {
         $zip->add_file('hello.txt', 'hello!');
       }, [
         'output' => new FileWriter(),
       ]);
 
       # open archive
-      $zip = $this->open_archive($dst_path);
+      $zip = $this->open_archive($zip_path);
 
       # read hello.txt, check text
       $this->assertEquals(
@@ -38,13 +38,13 @@ final class ArchiveTest extends BaseTestCase {
   }
 
   public function testStreamWriter() {
-    $this->with_temp_file(function(string $dst_path) {
-      $fh = fopen($dst_path, 'wb');
+    $this->with_temp_file(function(string $zip_path) {
+      $fh = fopen($zip_path, 'wb');
       if ($fh === false) {
         throw new Exception("fopen() failed");
       }
 
-      ZipStream::send($dst_path, function(ZipStream &$zip) {
+      ZipStream::send($zip_path, function(ZipStream &$zip) {
         $zip->add_file('hello.txt', 'hello!');
       }, [
         'output' => new StreamWriter($fh),
@@ -54,7 +54,7 @@ final class ArchiveTest extends BaseTestCase {
       fclose($fh);
 
       # open archive
-      $zip = $this->open_archive($dst_path);
+      $zip = $this->open_archive($zip_path);
 
       # read hello.txt, check text
       $this->assertEquals(
@@ -65,11 +65,11 @@ final class ArchiveTest extends BaseTestCase {
   }
 
   public function testArchiveComment() : void {
-    $this->with_temp_file(function($dst_path) {
+    $this->with_temp_file(function($zip_path) {
       $comment = 'test archive comment';
 
       # write archive
-      ZipStream::send($dst_path, function(ZipStream &$zip) {
+      ZipStream::send($zip_path, function(ZipStream &$zip) {
         $zip->add_file('hello.txt', 'hello!');
       }, [
         'comment' => $comment,
@@ -77,13 +77,56 @@ final class ArchiveTest extends BaseTestCase {
       ]);
 
       # open archive
-      $zip = $this->open_archive($dst_path);
+      $zip = $this->open_archive($zip_path);
 
       # read hello.txt, check text
       $this->assertEquals(
         $comment,
         $zip->getArchiveComment()
       );
+    });
+  }
+
+  public function testLongArchiveComment() : void {
+    $this->expectException(\Pablotron\ZipStream\CommentError::class);
+
+    $this->with_temp_file(function($zip_path) {
+      $comment = str_repeat('x', 0xFFFF);
+
+      # write archive
+      ZipStream::send($zip_path, function(ZipStream &$zip) {
+        $zip->add_file('hello.txt', 'hello!');
+      }, [
+        'comment' => $comment,
+        'output'  => new FileWriter(),
+      ]);
+    });
+  }
+
+  public function testInvalidOutput() : void {
+    $this->expectException(\Pablotron\ZipStream\Error::class);
+
+    $this->with_temp_file(function($zip_path) {
+      # write archive with invalid writer
+      ZipStream::send($zip_path, function(ZipStream &$zip) {
+        $zip->add_file('hello.txt', 'hello!');
+      }, [
+        'output' => 'bad writer',
+      ]);
+    });
+  }
+
+  public function testInvalidMethod() : void {
+    $this->expectException(\Pablotron\ZipStream\UnknownMethodError::class);
+
+    $this->with_temp_file(function($zip_path) {
+      # write archive with invalid compression method
+      ZipStream::send($zip_path, function(ZipStream &$zip) {
+        $zip->add_file('hello.txt', 'hello!');
+      }, [
+        'method'  => 100,
+        'output'  => new FileWriter(),
+      ]);
     });
   }
 };

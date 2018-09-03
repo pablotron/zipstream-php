@@ -27,20 +27,14 @@ const VERSION = '0.3.0';
 const VERSION_NEEDED = 45;
 
 /**
- * Valid compression methods.
- */
-final class Methods {
-  /** Store file without compression. */
-  const STORE = 0;
-
-  /** Store file using DEFLATE compression. */
-  const DEFLATE = 8;
-};
-
-/**
  * Base class for all exceptions raised by ZipStream.
  */
 class Error extends \Exception { };
+
+/**
+ * Comment length error.
+ */
+final class CommentError extends Error { };
 
 /**
  * Deflate context error.
@@ -100,6 +94,34 @@ final class PathError extends Error {
   public function __construct(string $file_name, string $message) {
     $this->file_name = $file_name;
     parent::__construct($message);
+  }
+};
+
+/**
+ * Valid compression methods.
+ */
+final class Methods {
+  /** Store file without compression. */
+  const STORE = 0;
+
+  /** Store file using DEFLATE compression. */
+  const DEFLATE = 8;
+
+  /**
+   * Check for supported compression method.
+   *
+   * @internal
+   *
+   * @param int $method Compression method.
+   *
+   * @return void
+   *
+   * @throw UnsupportedMethodError if compression method is unsupported.
+   */
+  static public function check(int $method) : void {
+    if ($method != Methods::DEFLATE && $method != Methods::STORE) {
+      throw new UnknownMethodError($method);
+    }
   }
 };
 
@@ -826,7 +848,7 @@ final class Entry {
     # check comment length
     if (strlen($comment) >= 0xFFFF) {
       $this->state = self::ENTRY_STATE_ERROR;
-      throw new Error('comment too long');
+      throw new CommentError('entry comment too long');
     }
 
     $this->uncompressed_size = 0;
@@ -862,7 +884,7 @@ final class Entry {
    *
    * @return int Number of bytes written to output.
    */
-  public function write(string &$data) : int {
+  public function write(string $data) : int {
     try {
       # check entry state
       if ($this->state != self::ENTRY_STATE_DATA) {
@@ -1237,8 +1259,20 @@ final class ZipStream {
         'time' => time(),
       ], $args);
 
+      # check archive method
+      Methods::check($this->args['method']);
+
+      # check archive comment length
+      if (strlen($this->args['comment']) >= 0xFFFF) {
+        throw new CommentError('archive comment too long');
+      }
+
       # initialize output
       if (isset($args['output']) && $args['output']) {
+        if (!is_subclass_of($args['output'], Writer::class)) {
+          throw new Error('output must implement Writer interface');
+        }
+
         # use specified output writer
         $this->output = $args['output'];
       } else {
@@ -1596,7 +1630,7 @@ final class ZipStream {
     # get comment, check length
     $comment = $this->args['comment'];
     if (strlen($comment) >= 0xFFFF) {
-      throw new Error('comment too long');
+      throw new CommentError('archive comment too long');
     }
 
     return pack('VvvvvVVv',
@@ -1624,10 +1658,13 @@ final class ZipStream {
    */
   private function get_entry_time(array &$args) : int {
     if (isset($args['time'])) {
+      # use entry time
       return $args['time'];
     } else if (isset($this->args['time'])) {
+      # use archive time
       return $this->args['time'];
     } else {
+      # fall back to current time
       return time();
     }
   }
@@ -1649,10 +1686,10 @@ final class ZipStream {
       $r = Methods::DEFLATE;
     }
 
-    if ($r != Methods::DEFLATE && $r != Methods::STORE) {
-      throw new UnknownMethodError($r);
-    }
+    # check method
+    Methods::check($r);
 
+    # return method
     return $r;
   }
 };
