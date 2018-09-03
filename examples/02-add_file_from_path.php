@@ -6,7 +6,7 @@ require_once __DIR__ . '/../src/ZipStream.php';
 use Pablotron\ZipStream\ZipStream;
 
 # set source path of local file
-$src_path = __DIR__ . '/02-add_file_from_path.php';
+$src_path = __FILE__;
 
 # create the output archive named "example.zip"
 $zip = new ZipStream('example.zip');
