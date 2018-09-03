@@ -1,3 +1,4 @@
 *.sw?
 vendor/
 docs/
+examples/*zip

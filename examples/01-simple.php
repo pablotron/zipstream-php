@@ -6,9 +6,10 @@ require_once __DIR__ . '/../src/ZipStream.php';
 use Pablotron\ZipStream\ZipStream;
 
 # create the output stream
+# this will send the archive as an HTTP response by default
 $zip = new ZipStream('example.zip');
 
-# add a file named "hello.txt" to output archive, containing
+# add "hello.txt" to output archive, containing
 # the string "hello world!"
 $zip->add_file('hello.txt', 'hello world!');
 
