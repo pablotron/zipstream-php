@@ -17,7 +17,7 @@
 
   "require-dev": {
     "phpunit/phpunit": "^7",
-    "phpdocumentor/phpdocumentor": "2.*"
+    "phan/phan": "^1.0"
   },
 
   "autoload": {
@@ -33,12 +33,33 @@
   },
 
   "scripts": {
-    "test": [
+    "test-unit": [
       "phpunit --bootstrap vendor/autoload.php tests"
+    ],
+
+    "test-xml": [
+      "phpunit --bootstrap vendor/autoload.php --log-junit test-results-$(date +%Y%m%d%H%M%S).xml tests"
+    ],
+
+    "test-static": [
+      "phan src/*php"
+    ],
+
+    "test": [
+      "@test-unit",
+      "@test-static"
     ],
 
     "docs": [
       "phpdoc -d src -t docs --template=responsive-twig --title=ZipStream"
     ]
+  },
+
+  "scripts-descriptions": {
+    "test":         "Run all unit tests and the static analyzer.",
+    "test-unit":    "Run all unit tests.",
+    "test-xml":     "Run all unit tests and export the results as XML.",
+    "test-phan":    "Run the static analyzer.",
+    "docs":         "Generate the API documentation."
   }
 }
