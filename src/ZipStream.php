@@ -118,7 +118,7 @@ final class Methods {
    *
    * @return void
    *
-   * @throw UnsupportedMethodError if compression method is unsupported.
+   * @throws UnknownMethodError if compression method is unknown.
    */
   static public function check(int $method) : void {
     if ($method != Methods::DEFLATE && $method != Methods::STORE) {
@@ -272,10 +272,13 @@ final class FileWriter implements Writer {
   public $path;
 
   /**
-   * @var resource Output file handle.
+   * @var resource $fh Output file handle.
+   * @var int $state Internal writer state.
+   *
    * @internal
    */
-  private $fh;
+  private $fh,
+          $state;
 
   const FILE_WRITER_STATE_INIT = 0;
   const FILE_WRITER_STATE_OPEN = 1;
@@ -322,7 +325,7 @@ final class FileWriter implements Writer {
    *
    * @return void
    *
-   * @throw FileError if output archive could not be opened.
+   * @throws FileError if output archive could not be opened.
    */
   public function open() : void {
     # check state
@@ -335,7 +338,7 @@ final class FileWriter implements Writer {
     # open output file
     $this->fh = @fopen($this->path, 'wb');
     if (!$this->fh) {
-      throw new FileError($path, "couldn't open file");
+      throw new FileError($this->path, "couldn't open file");
     }
 
     # set state
@@ -402,6 +405,13 @@ final class StreamWriter implements Writer {
   /** @var resource Output stream. */
   public $stream;
 
+  /**
+   * @var int $state Internal writer state.
+   *
+   * @internal
+   */
+  private $state;
+
   const STREAM_WRITER_STATE_INIT = 0;
   const STREAM_WRITER_STATE_OPEN = 1;
   const STREAM_WRITER_STATE_CLOSED = 2;
@@ -449,7 +459,7 @@ final class StreamWriter implements Writer {
    *
    * @return void
    *
-   * @throw FileError if output archive could not be opened.
+   * @throws FileError if output archive could not be opened.
    */
   public function open() : void {
     # set state
@@ -582,7 +592,7 @@ final class Hasher {
   /** @var int $hash Output hash result. */
   public $hash;
 
-  /** @var object $ctx Internal hash context. */
+  /** @var \HashContext $ctx Internal hash context. */
   private $ctx;
 
   /**
@@ -597,10 +607,10 @@ final class Hasher {
    *
    * @param string $data Input data.
    * @return void
-   * @throw Error if called after close().
+   * @throws Error if called after close().
    */
   public function write(string $data) : void {
-    if ($this->ctx !== null) {
+    if (isset($this->ctx)) {
       # update hash context
       hash_update($this->ctx, $data);
     } else {
@@ -617,10 +627,10 @@ final class Hasher {
    * @return int CRC32b hash of input data.
    */
   public function close() : int {
-    if ($this->ctx !== null) {
+    if (isset($this->ctx)) {
       # finalize hash context
       $d = hash_final($this->ctx, true);
-      $this->ctx = null;
+      unset($this->ctx);
 
       # encode hash as uint32_t
       # (FIXME: endian issue?)
@@ -700,7 +710,7 @@ final class StoreFilter extends DataFilter {
  * @see DataFilter, StoreFilter
  */
 final class DeflateFilter extends DataFilter {
-  /** @var object $ctx Deflate context. */
+  /** @var resource $ctx Deflate context. */
   private $ctx;
 
   /**
@@ -708,17 +718,20 @@ final class DeflateFilter extends DataFilter {
    *
    * @param Writer $output Output writer.
    *
-   * @throw DeflateError If initializing deflate context fails.
+   * @throws DeflateError If initializing deflate context fails.
    */
   public function __construct(Writer &$output) {
     # init parent
     parent::__construct($output);
 
     # init deflate context, check for error
-    $this->ctx = deflate_init(ZLIB_ENCODING_RAW);
-    if ($this->ctx === false) {
+    $ctx = deflate_init(ZLIB_ENCODING_RAW);
+    if ($ctx === false) {
       throw new DeflateError('deflate_init() failed');
     }
+
+    # init context
+    $this->ctx = $ctx;
   }
 
   /**
@@ -728,12 +741,12 @@ final class DeflateFilter extends DataFilter {
    *
    * @return int Number of bytes written.
    *
-   * @throw DeflateError If writing to deflate context fails.
-   * @throw Error If this filter was already closed.
+   * @throws DeflateError If writing to deflate context fails.
+   * @throws Error If this filter was already closed.
    */
   public function write(string $data) : int {
     # check state
-    if (!$this->ctx) {
+    if (!isset($this->ctx)) {
       # filter already closed
       throw new Error('Filter already closed');
     }
@@ -753,12 +766,12 @@ final class DeflateFilter extends DataFilter {
    *
    * @return int Number of bytes written.
    *
-   * @throw DeflateError If writing to deflate context fails.
-   * @throw Error If this filter was already closed.
+   * @throws DeflateError If writing to deflate context fails.
+   * @throws Error If this filter was already closed.
    */
   public function close() : int {
     # check state
-    if (!$this->ctx) {
+    if (!isset($this->ctx)) {
       # filter already closed
       throw new Error('Filter already closed');
     }
@@ -770,7 +783,7 @@ final class DeflateFilter extends DataFilter {
     }
 
     # clear deflate context
-    $this->ctx = null;
+    unset($this->ctx);
 
     # write remaining data, return number of bytes written
     return parent::write($compressed_data);
@@ -831,12 +844,15 @@ final class Entry {
    *   Date and time converter for this file.
    * @var Hasher $hasher
    *   Internal hasher for this file.
+   * @var DataFilter $filter
+   *   Internal compression filter for this file.
    * @var int $state
    *   Entry state.
    */
   private $len,
           $date_time,
           $hasher,
+          $filter,
           $state;
 
   /**
@@ -857,8 +873,8 @@ final class Entry {
    * @param string $comment
    *   File comment.
    *
-   * @throw Error if compression method is unknown.
-   * @throw PathError if compression method is unknown.
+   * @throws Error if compression method is unknown.
+   * @throws PathError if compression method is unknown.
    */
   public function __construct(
     Writer &$output,
@@ -913,7 +929,7 @@ final class Entry {
    *
    * @param string $data Output file data.
    *
-   * @throw Error if entry state is invalid.
+   * @throws Error if entry state is invalid.
    *
    * @return int Number of bytes written to output.
    */
@@ -935,7 +951,7 @@ final class Entry {
 
       # return length
       return $len;
-    } catch (Exception $e) {
+    } catch (\Exception $e) {
       $this->state = self::ENTRY_STATE_ERROR;
       throw $e;
     }
@@ -950,7 +966,7 @@ final class Entry {
    *
    * @internal
    *
-   * @throw Error if entry state is invalid.
+   * @throws Error if entry state is invalid.
    *
    * @return int Number of bytes written to output.
    */
@@ -1013,7 +1029,7 @@ final class Entry {
    *
    * @internal
    *
-   * @throw Error if entry state is invalid.
+   * @throws Error if entry state is invalid.
    *
    * @return int Number of bytes written to output.
    */
@@ -1026,7 +1042,7 @@ final class Entry {
 
     # finalize hash context
     $this->hash = $this->hasher->close();
-    $this->hasher = null;
+    unset($this->hasher);
 
     # flush remaining data
     $this->compressed_size += $this->filter->close();
@@ -1174,7 +1190,7 @@ final class Entry {
    *
    * @return void
    *
-   * @throw PathError if path is invalid.
+   * @throws PathError if path is invalid.
    */
   private function check_path(string $path) : void {
     # make sure path is non-null
@@ -1245,11 +1261,13 @@ final class ZipStream {
   /**
    * @var array $args Hash of options.
    * @var Writer $output output Writer.
+   * @var int $state Internal output stream state.
    * @var int $pos Current byte offset in output stream.
    * @var array $entries Array of archive entries.
    */
   private $args,
           $output,
+          $state,
           $pos = 0,
           $entries = [],
           $paths = [];
@@ -1319,7 +1337,7 @@ final class ZipStream {
 
       # open output
       $this->output->open();
-    } catch (Exception $e) {
+    } catch (\Exception $e) {
       $this->state = self::STREAM_STATE_ERROR;
       throw $e;
     }
@@ -1358,7 +1376,7 @@ final class ZipStream {
    *
    * @example "examples/02-add_file_from_path.php"
    *
-   * @throw FileError if the file could not be opened or read.
+   * @throws FileError if the file could not be opened or read.
    */
   public function add_file_from_path(
     string $dst_path,
@@ -1401,8 +1419,8 @@ final class ZipStream {
    *
    * @example "examples/03-add_stream.php"
    *
-   * @throw Error if $src is not a resource.
-   * @throw Error if the resource could not be read.
+   * @throws Error if $src is not a resource.
+   * @throws Error if the resource could not be read.
    */
   public function add_stream(
     string $dst_path,
@@ -1447,8 +1465,8 @@ final class ZipStream {
    *
    * @example "examples/04-add.php"
    *
-   * @throw Error if the archive is in an invalid state.
-   * @throw Error if the destination path already exists.
+   * @throws Error if the archive is in an invalid state.
+   * @throws Error if the destination path already exists.
    */
   public function add(
     string $dst_path,
@@ -1500,7 +1518,7 @@ final class ZipStream {
 
       # set state
       $this->state = self::STREAM_STATE_INIT;
-    } catch (Exception $e) {
+    } catch (\Exception $e) {
       # set error state, re-throw exception
       $this->state = self::STREAM_STATE_ERROR;
       throw $e;
@@ -1512,7 +1530,7 @@ final class ZipStream {
    *
    * @return int Total number of bytes written.
    *
-   * @throw Error if the archive is in an invalid state.
+   * @throws Error if the archive is in an invalid state.
    *
    * @example "examples/01-simple.php"
    */
@@ -1554,7 +1572,7 @@ final class ZipStream {
 
       # return total archive length
       return $this->pos;
-    } catch (Exception $e) {
+    } catch (\Exception $e) {
       $this->state = self::STREAM_STATE_ERROR;
       throw $e;
     }
