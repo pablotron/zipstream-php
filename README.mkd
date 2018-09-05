@@ -45,6 +45,7 @@ Dependencies
 
 * PHP: 7.0 or newer (required).
 * [Composer][composer]: Used for installation (optional, see below).
+* [Phan][phan]: Used for static analysis (optional).
 * [phpDocumentor][phpdoc]: Used to generate the API documentation (optional).
 * [PHPUnit][phpunit]: Used to run the test suite (optional).
 
@@ -121,6 +122,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 [composer]: https://getcomposer.org/
 [mit]: https://opensource.org/licenses/MIT
+[phan]: https://github.com/phan/phan
 [phpunit]: https://phpunit.de/
 [phpdoc]: https://phpdoc.org/
 [me]: mailto:pabs@pablotron.org
